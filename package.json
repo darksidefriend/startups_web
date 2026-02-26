@@ -1,0 +1,24 @@
+{
+  "name": "startups_web",
+  "version": "1.0.0",
+  "description": "StartUps web version",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.6.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/darksidefriend/startups_web.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/darksidefriend/startups_web/issues"
+  },
+  "homepage": "https://github.com/darksidefriend/startups_web#readme"
+}
