@@ -1,13 +1,22 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
+const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  // На Render клиент и сервер на одном домене, поэтому CORS не требуется.
+  // Если хотите явно разрешить, раскомментируйте:
+  // cors: {
+  //   origin: "https://your-app.onrender.com",
+  //   methods: ["GET", "POST"]
+  // }
+});
 
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
 
+// --- Вся игровая логика из предыдущих версий (без изменений) ---
 const rooms = {};
 
 const COMPANIES = [
@@ -21,26 +30,6 @@ const COMPANIES = [
 
 function generateRoomCode() {
   return Math.random().toString(36).substring(2, 6).toUpperCase();
-}
-
-// --- Вспомогательные функции для работы с комнатами ---
-function broadcastRoomList() {
-  const list = Object.values(rooms).map(room => ({
-    id: room.id,
-    players: room.players.length,
-    maxPlayers: 7, // или можно хранить в комнате
-    gameStarted: room.gameStarted
-  }));
-  io.emit('rooms_list', list);
-}
-
-function addSystemMessage(room, text) {
-  if (!room.messages) room.messages = [];
-  const msg = { sender: 'System', text, system: true, timestamp: Date.now() };
-  room.messages.push(msg);
-  // Ограничим историю 50 сообщениями
-  if (room.messages.length > 50) room.messages.shift();
-  io.to(room.id).emit('chat_message', msg);
 }
 
 function createDeck() {
@@ -65,6 +54,24 @@ function shuffle(array) {
   return array;
 }
 
+function broadcastRoomList() {
+  const list = Object.values(rooms).map(room => ({
+    id: room.id,
+    players: room.players.length,
+    maxPlayers: 7,
+    gameStarted: room.gameStarted
+  }));
+  io.emit('rooms_list', list);
+}
+
+function addSystemMessage(room, text) {
+  if (!room.messages) room.messages = [];
+  const msg = { sender: 'System', text, system: true, timestamp: Date.now() };
+  room.messages.push(msg);
+  if (room.messages.length > 50) room.messages.shift();
+  io.to(room.id).emit('chat_message', msg);
+}
+
 function initRoom(roomId, ownerId) {
   rooms[roomId] = {
     id: roomId,
@@ -79,7 +86,7 @@ function initRoom(roomId, ownerId) {
     lastCardTaken: false,
     lastCardTakenPlayer: null,
     gameEnded: false,
-    messages: [] // для чата
+    messages: []
   };
 }
 
@@ -118,7 +125,6 @@ function removePlayer(roomId, socketId) {
     }
   }
 }
-
 
 function recalcAntiChips(room) {
   const newChips = {};
@@ -182,7 +188,6 @@ function startGame(roomId) {
     player.chips1 = 10;
     player.chips3 = 0;
   });
-  addSystemMessage(room, 'Game started!');
   room.market = [];
   room.antiChips = {};
   COMPANIES.forEach(c => room.antiChips[c.name] = null);
@@ -192,6 +197,7 @@ function startGame(roomId) {
   room.gameEnded = false;
   room.lastCardTaken = false;
   room.lastCardTakenPlayer = null;
+  addSystemMessage(room, 'Game started!');
 }
 
 function canTakeFromDeck(room, player) {
@@ -338,8 +344,6 @@ function endGame(room) {
 
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
-
-  // При подключении отправляем список комнат
   broadcastRoomList();
 
   socket.on('create_room', (playerName) => {
@@ -349,7 +353,7 @@ io.on('connection', (socket) => {
     socket.join(roomCode);
     socket.emit('room_created', { roomCode, player });
     io.to(roomCode).emit('players_update', rooms[roomCode].players);
-    broadcastRoomList(); // обновить список для всех
+    broadcastRoomList();
   });
 
   socket.on('join_room', ({ roomCode, playerName }) => {
@@ -370,10 +374,9 @@ io.on('connection', (socket) => {
     const player = addPlayer(roomCode, socket.id, playerName);
     socket.join(roomCode);
     socket.emit('room_joined', { roomCode, player });
-    // Отправляем историю чата новому игроку
     socket.emit('chat_history', room.messages || []);
     io.to(roomCode).emit('players_update', room.players);
-    broadcastRoomList(); // обновить список
+    broadcastRoomList();
   });
 
   socket.on('start_game', (roomCode) => {
@@ -390,7 +393,7 @@ io.on('connection', (socket) => {
     startGame(roomCode);
     room.companyTotals = computeCompanyTotals(room);
     io.to(roomCode).emit('game_started', room);
-    broadcastRoomList(); // комната теперь в игре
+    broadcastRoomList();
   });
 
   socket.on('player_action', ({ roomCode, action, data }) => {
@@ -423,7 +426,7 @@ io.on('connection', (socket) => {
       io.to(roomCode).emit('game_update', room);
       if (room.gameEnded) {
         io.to(roomCode).emit('game_ended', room.results);
-        broadcastRoomList(); // комната завершена, исчезнет из списка (можно фильтровать)
+        broadcastRoomList();
       }
     } else {
       socket.emit('error', 'Invalid action');
@@ -463,7 +466,7 @@ io.on('connection', (socket) => {
         if (room.players.length === 0) {
           delete rooms[roomCode];
         }
-        broadcastRoomList(); // обновить список
+        broadcastRoomList();
         break;
       }
     }
