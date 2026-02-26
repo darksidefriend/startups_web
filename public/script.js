@@ -12,12 +12,13 @@ const resultsScreen = document.getElementById('results-screen');
 // Элементы лобби
 const playerNameInput = document.getElementById('player-name');
 const createBtn = document.getElementById('create-game');
-const joinBtn = document.getElementById('join-game');
+// const joinBtn = document.getElementById('join-game');
 const roomCodeInput = document.getElementById('room-code');
 const lobbyInfo = document.getElementById('lobby-info');
 const displayRoomCode = document.getElementById('display-room-code');
 const playersList = document.getElementById('players-list');
 const startBtn = document.getElementById('start-game');
+const roomListDiv = document.getElementById('room-list');
 
 // Элементы игры
 const gameRoomCodeSpan = document.getElementById('game-room-code');
@@ -30,6 +31,11 @@ const playerInfoDiv = document.querySelector('.player-info');
 const myPortfolioDiv = document.getElementById('my-portfolio-cards');
 const handDiv = document.getElementById('hand');
 const actionsDiv = document.getElementById('actions');
+
+// Элементы чата
+const chatMessages = document.getElementById('chat-messages');
+const chatInput = document.getElementById('chat-input');
+const chatSend = document.getElementById('chat-send');
 
 // Элементы результатов
 const resultsList = document.getElementById('results-list');
@@ -96,20 +102,64 @@ createBtn.addEventListener('click', () => {
   socket.emit('create_room', name);
 });
 
-// Присоединение
-joinBtn.addEventListener('click', () => {
-  const name = playerNameInput.value.trim() || 'Player';
-  const code = roomCodeInput.value.trim().toUpperCase();
-  if (code) {
-    socket.emit('join_room', { roomCode: code, playerName: name });
-  }
-});
+// // Присоединение
+// joinBtn.addEventListener('click', () => {
+//   const name = playerNameInput.value.trim() || 'Player';
+//   const code = roomCodeInput.value.trim().toUpperCase();
+//   if (code) {
+//     socket.emit('join_room', { roomCode: code, playerName: name });
+//   }
+// });
 
 // Старт игры
 startBtn.addEventListener('click', () => {
   if (currentRoom) {
     socket.emit('start_game', currentRoom);
   }
+});
+
+// --- Функции для списка комнат ---
+function updateRoomList(rooms) {
+  roomListDiv.innerHTML = '';
+  rooms.forEach(room => {
+    const roomItem = document.createElement('div');
+    roomItem.className = `room-item ${room.gameStarted ? 'disabled' : ''}`;
+    roomItem.innerHTML = `
+      <span class="room-code">${room.id}</span>
+      <span class="room-players">${room.players}/${room.maxPlayers}</span>
+    `;
+    if (!room.gameStarted && room.players < room.maxPlayers) {
+      roomItem.addEventListener('click', () => {
+        const name = playerNameInput.value.trim() || 'Player';
+        socket.emit('join_room', { roomCode: room.id, playerName: name });
+      });
+    } else {
+      roomItem.classList.add('disabled');
+    }
+    roomListDiv.appendChild(roomItem);
+  });
+}
+
+// --- Функции чата ---
+function addChatMessage(sender, text, system = false) {
+  const msgDiv = document.createElement('div');
+  msgDiv.className = system ? 'message system' : 'message';
+  if (!system) {
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    msgDiv.innerHTML = `<span class="sender">${sender}:</span> <span class="text">${text}</span> <span class="time">${time}</span>`;
+  } else {
+    msgDiv.textContent = text;
+  }
+  chatMessages.appendChild(msgDiv);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function clearChat() {
+  chatMessages.innerHTML = '';
+}
+
+socket.on('rooms_list', (rooms) => {
+  updateRoomList(rooms);
 });
 
 // Обработчики сокетов
@@ -143,12 +193,51 @@ socket.on('game_update', (room) => {
   }
 });
 
+socket.on('chat_history', (messages) => {
+  clearChat();
+  messages.forEach(msg => {
+    addChatMessage(msg.sender, msg.text, msg.system);
+  });
+});
+
+socket.on('chat_message', (msg) => {
+  addChatMessage(msg.sender, msg.text, msg.system);
+});
+
+
 socket.on('game_ended', (results) => {
   showResults(results);
 });
 
 socket.on('error', (msg) => {
   alert(msg);
+});
+
+// --- Создание комнаты ---
+createBtn.addEventListener('click', () => {
+  const name = playerNameInput.value.trim() || 'Player';
+  socket.emit('create_room', name);
+});
+
+// --- Старт игры ---
+startBtn.addEventListener('click', () => {
+  if (currentRoom) {
+    socket.emit('start_game', currentRoom);
+  }
+});
+
+// --- Отправка сообщения чата ---
+function sendChatMessage() {
+  const text = chatInput.value.trim();
+  if (text && currentRoom) {
+    socket.emit('send_message', { roomCode: currentRoom, text });
+    chatInput.value = '';
+  }
+}
+
+chatSend.addEventListener('click', sendChatMessage);
+chatInput.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') sendChatMessage();
 });
 
 // Отображение лобби
@@ -178,6 +267,8 @@ function showGame(room) {
   gameScreen.classList.add('active');
   resultsScreen.classList.remove('active');
   gameRoomCodeSpan.textContent = room.id;
+
+  document.querySelector('.chat-container').style.display = 'flex';
 
   const me = room.players.find(p => p.id === currentPlayer.id);
   const isMyTurn = (room.players[room.currentPlayerIndex].id === currentPlayer.id);
@@ -348,4 +439,5 @@ backToLobbyBtn.addEventListener('click', () => {
   lobbyInfo.style.display = 'none';
   playerNameInput.value = 'Player';
   roomCodeInput.value = '';
+  document.querySelector('.chat-container').style.display = 'none';
 });

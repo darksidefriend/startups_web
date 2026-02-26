@@ -9,18 +9,21 @@
 </head>
 <body>
   <div id="app">
-    <!-- Экраны -->
+    <!-- Главный экран (лобби) -->
     <div id="lobby-screen" class="screen active">
       <h1>Startups</h1>
       <div class="form">
         <input type="text" id="player-name" placeholder="Your name" value="Player">
         <button id="create-game">Create Game</button>
-        <div class="or">or</div>
-        <div class="join-group">
-          <input type="text" id="room-code" placeholder="Room code" maxlength="4">
-          <button id="join-game">Join</button>
-        </div>
       </div>
+
+      <!-- Список активных комнат -->
+      <div class="room-list-container">
+        <h2>Active Rooms</h2>
+        <div id="room-list" class="room-list"></div>
+      </div>
+
+      <!-- Информация о созданной/присоединённой комнате (скрыта пока не в комнате) -->
       <div id="lobby-info" style="display: none;">
         <h2>Room: <span id="display-room-code"></span></h2>
         <div id="players-list"></div>
@@ -28,6 +31,7 @@
       </div>
     </div>
 
+    <!-- Игровой экран -->
     <div id="game-screen" class="screen">
       <div class="game-header">
         <div>Room: <span id="game-room-code"></span></div>
@@ -41,7 +45,7 @@
           <div class="deck" id="deck">Deck <span id="deck-count"></span></div>
           <div class="market" id="market"></div>
         </div>
-        <!-- Правый верх: текущий игрок (информация + портфель) -->
+        <!-- Правый верх: текущий игрок -->
         <div class="current-player" id="current-player">
           <div class="player-info"></div>
           <div class="player-portfolio">
@@ -54,8 +58,18 @@
         <!-- Кнопки действий -->
         <div class="actions" id="actions"></div>
       </div>
+
+      <!-- Чат (внизу справа) -->
+      <div class="chat-container">
+        <div class="chat-messages" id="chat-messages"></div>
+        <div class="chat-input">
+          <input type="text" id="chat-input" placeholder="Type a message...">
+          <button id="chat-send">Send</button>
+        </div>
+      </div>
     </div>
 
+    <!-- Экран результатов -->
     <div id="results-screen" class="screen">
       <h1>Results</h1>
       <div id="results-list"></div>
