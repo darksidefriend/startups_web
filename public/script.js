@@ -2,7 +2,7 @@ const socket = io();
 
 let currentRoom = null;
 let currentPlayer = null;
-let selectedHandIndex = null; // для UI выбора карты из руки
+let selectedHandIndex = null;
 
 // Экраны
 const lobbyScreen = document.getElementById('lobby-screen');
@@ -60,31 +60,32 @@ function renderChips(chips1, chips3) {
   `;
 }
 
-// Отрисовка портфеля текущего игрока (карточками)
-function renderPortfolioCards(portfolio, antiChips) {
+// Отрисовка портфеля текущего игрока (стопками)
+function renderPortfolioCards(portfolio, antiChips, companyTotals) {
   let html = '';
   for (const [company, count] of Object.entries(portfolio)) {
+    if (count === 0) continue;
     const companyClass = getCompanyClass(company);
     const hasShield = antiChips[company] === currentPlayer?.id;
-    for (let i = 0; i < count; i++) {
-      html += `
-        <div class="card card-${companyClass}">
-          <div class="company-name">${company}</div>
-          ${hasShield ? '<span class="shield">🛡️</span>' : ''}
-        </div>
-      `;
-    }
+    const total = companyTotals?.[company] || 0;
+    html += `
+      <div class="card card-${companyClass}">
+        <div class="company-name">${company}</div>
+        ${hasShield ? '<span class="shield">🛡️</span>' : ''}
+        <span class="stack-count">${count}</span>
+      </div>
+    `;
   }
   return html;
 }
 
-// Отрисовка портфеля оппонента (бейджами)
-function renderPortfolio(portfolio, antiChips) {
+// Отрисовка портфеля оппонента (бейджами) с правильным отображением антимонопольного чипа
+function renderPortfolio(portfolio, antiChips, opponentId) {
   let html = '';
   for (const [company, count] of Object.entries(portfolio)) {
     const companyClass = getCompanyClass(company);
-    const chip = antiChips[company];
-    html += `<span class="company-badge badge-${companyClass}">${company} ${count}${chip ? ' 👑' : ''}</span>`;
+    const hasChip = antiChips[company] === opponentId;
+    html += `<span class="company-badge badge-${companyClass}">${company} ${count}${hasChip ? ' 👑' : ''}</span>`;
   }
   return html;
 }
@@ -157,7 +158,6 @@ function showLobby() {
   resultsScreen.classList.remove('active');
   lobbyInfo.style.display = 'block';
   displayRoomCode.textContent = currentRoom;
-  // Запрос игроков будет обновлён через players_update
 }
 
 function renderLobbyPlayers(players) {
@@ -169,7 +169,6 @@ function renderLobbyPlayers(players) {
     if (p.id === currentPlayer?.id) div.style.fontWeight = 'bold';
     playersList.appendChild(div);
   });
-  // Кнопка старта только для владельца
   startBtn.style.display = (players.length >= 2 && players[0]?.id === currentPlayer?.id) ? 'block' : 'none';
 }
 
@@ -180,7 +179,6 @@ function showGame(room) {
   resultsScreen.classList.remove('active');
   gameRoomCodeSpan.textContent = room.id;
 
-  // Определяем текущего игрока
   const me = room.players.find(p => p.id === currentPlayer.id);
   const isMyTurn = (room.players[room.currentPlayerIndex].id === currentPlayer.id);
   turnIndicator.textContent = isMyTurn ? 'Your turn' : `${room.players[room.currentPlayerIndex].name}'s turn`;
@@ -193,7 +191,7 @@ function showGame(room) {
     oppDiv.className = 'opponent';
     oppDiv.innerHTML = `
       <div class="name">${p.name}</div>
-      <div class="portfolio">${renderPortfolio(p.portfolio, room.antiChips)}</div>
+      <div class="portfolio">${renderPortfolio(p.portfolio, room.antiChips, p.id)}</div>
       <div class="chips">${renderChips(p.chips1, p.chips3)}</div>
     `;
     opponentsDiv.appendChild(oppDiv);
@@ -206,6 +204,7 @@ function showGame(room) {
   marketDiv.innerHTML = '';
   room.market.forEach((card, idx) => {
     const companyClass = getCompanyClass(card.company);
+    const total = room.companyTotals?.[card.company] || 0;
     const cardDiv = document.createElement('div');
     cardDiv.className = `card card-${companyClass} market-card`;
     cardDiv.dataset.index = idx;
@@ -231,20 +230,22 @@ function showGame(room) {
     ${renderChips(me.chips1, me.chips3)}
   `;
 
-  // Портфель текущего игрока
-  myPortfolioDiv.innerHTML = renderPortfolioCards(me.portfolio, room.antiChips);
+  // Портфель текущего игрока (стопки)
+  myPortfolioDiv.innerHTML = renderPortfolioCards(me.portfolio, room.antiChips, room.companyTotals);
 
   // Рука
   handDiv.innerHTML = '';
   me.hand.forEach((card, idx) => {
     const companyClass = getCompanyClass(card.company);
+    const total = room.companyTotals?.[card.company] || 0;
     const cardDiv = document.createElement('div');
     cardDiv.className = `card card-${companyClass} ${selectedHandIndex === idx ? 'selected' : ''}`;
     cardDiv.dataset.index = idx;
-    cardDiv.innerHTML = `<div class="company-name">${card.company}</div>`;
+    cardDiv.innerHTML = `
+      <div class="company-name">${card.company}</div>
+    `;
     cardDiv.addEventListener('click', () => {
       if (isMyTurn && room.turnPhase === 'play') {
-        // Выбор карты для действия
         selectedHandIndex = idx;
         highlightHand();
       }
@@ -252,9 +253,11 @@ function showGame(room) {
     handDiv.appendChild(cardDiv);
   });
 
-  // Кнопки действий (для фазы play)
+  // Кнопки действий
   actionsDiv.innerHTML = '';
   if (isMyTurn && room.turnPhase === 'play') {
+    const isLastCardTurn = (room.lastCardTaken && room.players[room.currentPlayerIndex].id === room.lastCardTakenPlayer);
+
     const portfolioBtn = document.createElement('button');
     portfolioBtn.textContent = 'To Portfolio';
     portfolioBtn.addEventListener('click', () => {
@@ -273,6 +276,10 @@ function showGame(room) {
 
     const marketBtn = document.createElement('button');
     marketBtn.textContent = 'To Market';
+    marketBtn.disabled = isLastCardTurn;
+    if (isLastCardTurn) {
+      marketBtn.title = 'Cannot place on market after drawing last card';
+    }
     marketBtn.addEventListener('click', () => {
       if (selectedHandIndex !== null) {
         socket.emit('player_action', {
@@ -286,6 +293,14 @@ function showGame(room) {
       }
     });
     actionsDiv.appendChild(marketBtn);
+
+    if (isLastCardTurn) {
+      const msg = document.createElement('div');
+      msg.textContent = 'Game ends after this move';
+      msg.style.color = '#e67e22';
+      msg.style.fontSize = '0.9rem';
+      actionsDiv.appendChild(msg);
+    }
   } else if (isMyTurn && room.turnPhase === 'draw') {
     const deckBtn = document.createElement('button');
     deckBtn.textContent = 'Take from Deck';
@@ -297,7 +312,6 @@ function showGame(room) {
       });
     });
     actionsDiv.appendChild(deckBtn);
-    // Взять с рынка осуществляется кликом по карте рынка
   }
 }
 
@@ -325,7 +339,6 @@ function showResults(results) {
 }
 
 backToLobbyBtn.addEventListener('click', () => {
-  // Сброс состояния
   currentRoom = null;
   currentPlayer = null;
   selectedHandIndex = null;
