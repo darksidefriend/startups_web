@@ -26,12 +26,68 @@ const opponentsDiv = document.getElementById('opponents');
 const deckCount = document.getElementById('deck-count');
 const marketDiv = document.getElementById('market');
 const currentPlayerDiv = document.getElementById('current-player');
+const playerInfoDiv = document.querySelector('.player-info');
+const myPortfolioDiv = document.getElementById('my-portfolio-cards');
 const handDiv = document.getElementById('hand');
 const actionsDiv = document.getElementById('actions');
 
 // Элементы результатов
 const resultsList = document.getElementById('results-list');
 const backToLobbyBtn = document.getElementById('back-to-lobby');
+
+// Вспомогательная функция для получения класса компании
+function getCompanyClass(company) {
+  const map = {
+    'Giraffe Beer': 'giraffe',
+    'Bowwow Gaming': 'bowwow',
+    'Flamingo Soft': 'flamingo',
+    'Octo Coffee': 'octo',
+    'Hippo Electronics': 'hippo',
+    'Elephant Moon Transfer': 'elephant'
+  };
+  return map[company] || 'giraffe';
+}
+
+// Отрисовка чипов
+function renderChips(chips1, chips3) {
+  const total = chips1 + chips3 * 3;
+  return `
+    <div class="chips-info">
+      <span class="chip chip-1">${chips1}</span>
+      <span class="chip chip-3">${chips3}</span>
+      <span class="total-score">(=${total})</span>
+    </div>
+  `;
+}
+
+// Отрисовка портфеля текущего игрока (карточками)
+function renderPortfolioCards(portfolio, antiChips) {
+  let html = '';
+  for (const [company, count] of Object.entries(portfolio)) {
+    const companyClass = getCompanyClass(company);
+    const hasShield = antiChips[company] === currentPlayer?.id;
+    for (let i = 0; i < count; i++) {
+      html += `
+        <div class="card card-${companyClass}">
+          <div class="company-name">${company}</div>
+          ${hasShield ? '<span class="shield">🛡️</span>' : ''}
+        </div>
+      `;
+    }
+  }
+  return html;
+}
+
+// Отрисовка портфеля оппонента (бейджами)
+function renderPortfolio(portfolio, antiChips) {
+  let html = '';
+  for (const [company, count] of Object.entries(portfolio)) {
+    const companyClass = getCompanyClass(company);
+    const chip = antiChips[company];
+    html += `<span class="company-badge badge-${companyClass}">${company} ${count}${chip ? ' 👑' : ''}</span>`;
+  }
+  return html;
+}
 
 // Создание комнаты
 createBtn.addEventListener('click', () => {
@@ -138,7 +194,7 @@ function showGame(room) {
     oppDiv.innerHTML = `
       <div class="name">${p.name}</div>
       <div class="portfolio">${renderPortfolio(p.portfolio, room.antiChips)}</div>
-      <div class="chips">💰1:${p.chips1} 🎲3:${p.chips3}</div>
+      <div class="chips">${renderChips(p.chips1, p.chips3)}</div>
     `;
     opponentsDiv.appendChild(oppDiv);
   });
@@ -149,12 +205,13 @@ function showGame(room) {
   // Рынок
   marketDiv.innerHTML = '';
   room.market.forEach((card, idx) => {
+    const companyClass = getCompanyClass(card.company);
     const cardDiv = document.createElement('div');
-    cardDiv.className = 'market-card';
+    cardDiv.className = `card card-${companyClass} market-card`;
     cardDiv.dataset.index = idx;
     cardDiv.innerHTML = `
-      <div>${card.company}</div>
-      <div class="chips">${card.chips || 0}</div>
+      <div class="company-name">${card.company}</div>
+      ${card.chips ? `<span class="chip-stack">${card.chips}</span>` : ''}
     `;
     cardDiv.addEventListener('click', () => {
       if (isMyTurn && room.turnPhase === 'draw') {
@@ -168,19 +225,23 @@ function showGame(room) {
     marketDiv.appendChild(cardDiv);
   });
 
-  // Текущий игрок
-  currentPlayerDiv.innerHTML = `
+  // Текущий игрок (информация)
+  playerInfoDiv.innerHTML = `
     <div><strong>${me.name} (you)</strong></div>
-    <div class="chips-info">💰1:${me.chips1} 🎲3:${me.chips3}</div>
+    ${renderChips(me.chips1, me.chips3)}
   `;
+
+  // Портфель текущего игрока
+  myPortfolioDiv.innerHTML = renderPortfolioCards(me.portfolio, room.antiChips);
 
   // Рука
   handDiv.innerHTML = '';
   me.hand.forEach((card, idx) => {
+    const companyClass = getCompanyClass(card.company);
     const cardDiv = document.createElement('div');
-    cardDiv.className = `hand-card ${selectedHandIndex === idx ? 'selected' : ''}`;
+    cardDiv.className = `card card-${companyClass} ${selectedHandIndex === idx ? 'selected' : ''}`;
     cardDiv.dataset.index = idx;
-    cardDiv.textContent = card.company;
+    cardDiv.innerHTML = `<div class="company-name">${card.company}</div>`;
     cardDiv.addEventListener('click', () => {
       if (isMyTurn && room.turnPhase === 'play') {
         // Выбор карты для действия
@@ -241,34 +302,13 @@ function showGame(room) {
 }
 
 function highlightHand() {
-  document.querySelectorAll('.hand-card').forEach(card => {
+  document.querySelectorAll('.hand .card').forEach(card => {
     card.classList.remove('selected');
   });
   if (selectedHandIndex !== null) {
-    const selected = document.querySelector(`.hand-card[data-index="${selectedHandIndex}"]`);
+    const selected = document.querySelector(`.hand .card[data-index="${selectedHandIndex}"]`);
     if (selected) selected.classList.add('selected');
   }
-}
-
-function renderPortfolio(portfolio, antiChips) {
-  let html = '';
-  for (const [company, count] of Object.entries(portfolio)) {
-    const chip = antiChips[company];
-    html += `<span class="company-badge" style="background: ${getCompanyColor(company)};">${company} ${count}${chip ? ' 👑' : ''}</span>`;
-  }
-  return html;
-}
-
-function getCompanyColor(company) {
-  const colors = {
-    'Giraffe Beer': 'orange',
-    'Bowwow Gaming': 'blue',
-    'Flamingo Soft': 'pink',
-    'Octo Coffee': 'brown',
-    'Hippo Electronics': 'green',
-    'Elephant Moon Transfer': 'red'
-  };
-  return colors[company] || 'gray';
 }
 
 // Результаты
